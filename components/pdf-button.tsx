@@ -10,25 +10,56 @@ interface PDFButtonProps {
 }
 
 export function PDFButton({ invoice }: PDFButtonProps) {
+  const formatDate = (dateString: string): string => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date
+      .toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+      .replace(/\//g, "-");
+  };
+
   const generatePDF = () => {
     const doc = new jsPDF();
 
-    // Set font styles
+    // Configuración global de fuentes
     doc.setFont("helvetica", "normal");
+    doc.setFontSize(10); // Tamaño de letra más pequeño por defecto
+
+    // Márgenes y dimensiones
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.width;
+    const contentWidth = pageWidth - margin * 2;
 
     // Header section
-    doc.setFontSize(14);
-    doc.text(`Factura: ${invoice.invoiceNumber}`, 190, 20, { align: "right" });
     doc.setFontSize(12);
-    doc.text(`Fecha: ${invoice.date}`, 190, 30, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.text(`Factura: ${invoice.invoiceNumber}`, pageWidth - margin, margin, {
+      align: "right",
+    });
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      `Fecha: ${formatDate(invoice.date)}`,
+      pageWidth - margin,
+      margin + 7,
+      { align: "right" }
+    );
 
     // Company details (right aligned)
-    doc.setFontSize(13);
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text(invoice.company.name, 190, 45, { align: "right" });
-    doc.setFontSize(12);
+    doc.text(invoice.company.name, pageWidth - margin, margin + 20, {
+      align: "right",
+    });
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`NIF: ${invoice.company.taxId}`, 190, 52, { align: "right" });
+    doc.text(`NIF: ${invoice.company.taxId}`, pageWidth - margin, margin + 27, {
+      align: "right",
+    });
 
     // Handle multiline company address
     const companyAddressLines = doc.splitTextToSize(
@@ -36,98 +67,135 @@ export function PDFButton({ invoice }: PDFButtonProps) {
       80
     );
     companyAddressLines.forEach((line: string, index: number) => {
-      doc.text(line, 190, 59 + index * 7, { align: "right" });
+      doc.text(line, pageWidth - margin, margin + 34 + index * 5, {
+        align: "right",
+      });
     });
 
     // Worker details (left aligned)
-    const workerY = 95;
-    doc.setFontSize(13);
+    const workerY = margin + 60;
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text(invoice.worker.name, 20, workerY);
-    doc.setFontSize(12);
+    doc.text(invoice.worker.name, margin, workerY);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(invoice.worker.id, 20, workerY + 7);
+    doc.text(invoice.worker.id, margin, workerY + 7);
 
     // Handle multiline worker address
     const workerAddressLines = doc.splitTextToSize(invoice.worker.address, 80);
     workerAddressLines.forEach((line: string, index: number) => {
-      doc.text(line, 20, workerY + 14 + index * 7);
+      doc.text(line, margin, workerY + 14 + index * 5);
     });
 
     // Table headers
-    const tableY = workerY + 45;
+    const tableY = workerY + 40;
+    const colWidth = contentWidth / 4; // 4 columnas de igual ancho
+
+    // Encabezado de tabla
     doc.setFillColor(247, 248, 249);
-    doc.rect(20, tableY - 6, 170, 12, "F");
+    doc.rect(margin, tableY - 5, contentWidth, 10, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Descripción", 22, tableY);
-    doc.text("Unidades", 120, tableY, { align: "right" });
-    doc.text("Precio/u", 150, tableY, { align: "right" });
-    doc.text("Total", 188, tableY, { align: "right" });
+    doc.setFontSize(10);
+
+    // Posiciones de las columnas
+    const col1 = margin;
+    const col2 = margin + colWidth;
+    const col3 = margin + colWidth * 2;
+    const col4 = margin + colWidth * 3;
+
+    doc.text("Cliente", col1 + 2, tableY);
+    doc.text("Proyecto", col2 + 2, tableY);
+    doc.text("Unidades", col3 + colWidth - 5, tableY, { align: "right" });
+    doc.text("Precio/u", col4 + colWidth - 5, tableY, { align: "right" });
 
     // Table content
     doc.setFont("helvetica", "normal");
-    let y = tableY + 12;
+    let y = tableY + 10;
     invoice.items.forEach((item, index) => {
-      const units = item.isHourly ? `${item.units}h` : item.units.toString();
+      const units =
+        item.units > 0
+          ? item.isHourly
+            ? `${item.units}h`
+            : item.units.toString()
+          : "-";
 
       // Add zebra striping
       if (index % 2 === 0) {
         doc.setFillColor(252, 252, 253);
-        doc.rect(20, y - 6, 170, 12, "F");
+        doc.rect(margin, y - 5, contentWidth, 10, "F");
       }
 
-      doc.text(item.description, 22, y);
-      doc.text(units, 120, y, { align: "right" });
+      doc.text(item.client || "-", col1 + 2, y);
+      doc.text(item.description || "-", col2 + 2, y);
+      doc.text(units, col3 + colWidth - 5, y, { align: "right" });
       doc.text(
-        item.pricePerUnit != 0 ? `${item.pricePerUnit.toFixed(2)}€` : "",
-        150,
+        item.pricePerUnit > 0 ? `${item.pricePerUnit.toFixed(2)}€` : "-",
+        col4 + colWidth - 5,
         y,
-        { align: "right" }
+        {
+          align: "right",
+        }
       );
-      doc.text(`${item.total.toFixed(2)} €`, 188, y, { align: "right" });
-      y += 12;
+      y += 10;
     });
 
     // Total
     doc.setFillColor(247, 248, 249);
-    doc.rect(20, y - 6, 170, 12, "F");
+    doc.rect(margin, y - 5, contentWidth, 10, "F");
     doc.setFont("helvetica", "bold");
-    doc.text("TOTAL:", 150, y);
-    doc.text(`${invoice.total.toFixed(2)} €`, 188, y, { align: "right" });
+    doc.text("TOTAL:", col1 + 2, y);
+    doc.text(
+      invoice.totalUnits && invoice.totalUnits > 0
+        ? `${invoice.totalUnits}${invoice.items[0]?.isHourly ? "h" : ""}`
+        : "-",
+      col3 + colWidth - 5,
+      y,
+      { align: "right" }
+    );
+    doc.text(`${invoice.total.toFixed(2)} €`, col4 + colWidth - 5, y, {
+      align: "right",
+    });
 
     // Payment details
-    y += 20; // Adjust spacing before payment details
+    y += 20;
     doc.setFont("helvetica", "bold");
-    doc.text("Forma de pago:", 20, y);
+    doc.text("Forma de pago:", margin, y);
     doc.setFont("helvetica", "normal");
-    doc.text(invoice.paymentMethod, 70, y);
+    doc.text(invoice.paymentMethod, margin + 35, y);
 
     if (invoice.paymentMethod === "Transferencia") {
-      y += 8; // Reduce space between lines
+      y += 7;
       doc.setFont("helvetica", "bold");
-      doc.text("Cuenta bancaria:", 20, y);
-      doc.setFont("courier", "normal");
-      doc.text(invoice.bankAccount, 70, y);
-      y += 8; // Reduce space after this line
+      doc.text("Cuenta bancaria:", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(invoice.bankAccount, margin + 35, y);
+      y += 7;
     }
 
     // Additional note if present
     if (invoice.additionalNote) {
-      y += 10; // Adjust spacing here too
+      y += 10;
       doc.setFont("helvetica", "normal");
-      const noteLines = doc.splitTextToSize(invoice.additionalNote, 150);
+      const noteLines = doc.splitTextToSize(
+        invoice.additionalNote,
+        contentWidth
+      );
       noteLines.forEach((line: string, index: number) => {
-        doc.text(line, 20, y + index * 6); // Use smaller line spacing
+        doc.text(line, margin, y + index * 5);
       });
     }
 
     // Total at bottom
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(`Total a pagar: ${invoice.total.toFixed(2)} €`, 190, 280, {
-      align: "right",
-    });
+    doc.setFontSize(12);
+    doc.text(
+      `Total a pagar: ${invoice.total.toFixed(2)} €`,
+      pageWidth - margin,
+      270,
+      {
+        align: "right",
+      }
+    );
 
     doc.save(`factura-${invoice.invoiceNumber}.pdf`);
   };

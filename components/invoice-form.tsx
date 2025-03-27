@@ -36,6 +36,7 @@ export function InvoiceForm() {
     },
     items: [
       {
+        client: "",
         description: "",
         units: 0,
         pricePerUnit: 0,
@@ -48,6 +49,14 @@ export function InvoiceForm() {
     bankAccount: "",
     additionalNote: "",
     total: 0,
+    totalUnits: 0,
+    workingDays: 0,
+    attendedDays: 0,
+    dailyHours: 0,
+    monthlyPayment: 0,
+    hourlyPayment: 0,
+    finalPayment: 0,
+    useSalaryCalculation: false,
   });
 
   const updateItem = (
@@ -66,11 +75,27 @@ export function InvoiceForm() {
         Number(newItems[index].units) * Number(newItems[index].pricePerUnit);
     }
 
-    setInvoice({
-      ...invoice,
-      items: newItems,
-      total: newItems.reduce((sum, item) => sum + item.total, 0),
-    });
+    const totalAmount = newItems.reduce((sum, item) => sum + item.total, 0);
+    const totalUnits = newItems.reduce(
+      (sum, item) => sum + Number(item.units),
+      0
+    );
+
+    // Solo actualizar el total y totalUnits si no estamos usando el cálculo de salario
+    if (!invoice.useSalaryCalculation) {
+      setInvoice({
+        ...invoice,
+        items: newItems,
+        total: totalAmount,
+        totalUnits: totalUnits,
+      });
+    } else {
+      // Si estamos usando cálculo de salario, solo actualizamos los items
+      setInvoice({
+        ...invoice,
+        items: newItems,
+      });
+    }
   };
 
   const addItem = () => {
@@ -79,6 +104,7 @@ export function InvoiceForm() {
       items: [
         ...invoice.items,
         {
+          client: "",
           description: "",
           units: 0,
           pricePerUnit: 0,
@@ -88,6 +114,147 @@ export function InvoiceForm() {
         },
       ],
     });
+  };
+
+  const calculatePayments = (field: string, value: number) => {
+    const newInvoice = { ...invoice };
+
+    if (field === "workingDays") {
+      newInvoice.workingDays = value;
+    } else if (field === "attendedDays") {
+      newInvoice.attendedDays = value;
+    } else if (field === "dailyHours") {
+      newInvoice.dailyHours = value;
+    } else if (field === "monthlyPayment") {
+      newInvoice.monthlyPayment = value;
+      // Calculate hourly payment if we have working days and daily hours
+      if (
+        newInvoice.workingDays &&
+        newInvoice.workingDays > 0 &&
+        newInvoice.dailyHours &&
+        newInvoice.dailyHours > 0
+      ) {
+        newInvoice.hourlyPayment =
+          value / (newInvoice.workingDays * newInvoice.dailyHours);
+      }
+    } else if (field === "hourlyPayment") {
+      newInvoice.hourlyPayment = value;
+      // Calculate monthly payment if we have working days and daily hours
+      if (
+        newInvoice.workingDays &&
+        newInvoice.workingDays > 0 &&
+        newInvoice.dailyHours &&
+        newInvoice.dailyHours > 0
+      ) {
+        newInvoice.monthlyPayment =
+          value * newInvoice.workingDays * newInvoice.dailyHours;
+      }
+    }
+
+    // Calculate final payment (deducting unattended days)
+    if (
+      newInvoice.workingDays &&
+      newInvoice.workingDays > 0 &&
+      newInvoice.hourlyPayment &&
+      newInvoice.hourlyPayment > 0 &&
+      newInvoice.dailyHours &&
+      newInvoice.dailyHours > 0 &&
+      newInvoice.attendedDays !== undefined
+    ) {
+      newInvoice.finalPayment =
+        newInvoice.hourlyPayment *
+        newInvoice.attendedDays *
+        newInvoice.dailyHours;
+
+      // Update total units based on attended days and daily hours
+      newInvoice.totalUnits = newInvoice.attendedDays * newInvoice.dailyHours;
+
+      // Si estamos usando el cálculo de salario, actualizar el total
+      if (newInvoice.useSalaryCalculation) {
+        newInvoice.total = newInvoice.finalPayment;
+      }
+    }
+
+    setInvoice(newInvoice);
+  };
+
+  const toggleSalaryCalculation = (checked: boolean) => {
+    const newInvoice = { ...invoice, useSalaryCalculation: checked };
+
+    if (checked) {
+      // Si activamos el cálculo de salario, actualizar el total con el finalPayment
+      // y las unidades totales con días asistidos × horas diarias
+      if (newInvoice.finalPayment) {
+        newInvoice.total = newInvoice.finalPayment;
+
+        if (newInvoice.attendedDays && newInvoice.dailyHours) {
+          newInvoice.totalUnits =
+            newInvoice.attendedDays * newInvoice.dailyHours;
+        }
+      }
+    } else {
+      // Si desactivamos, calcular el total y unidades a partir de los items
+      const totalAmount = newInvoice.items.reduce(
+        (sum, item) => sum + item.total,
+        0
+      );
+      const totalUnits = newInvoice.items.reduce(
+        (sum, item) => sum + Number(item.units),
+        0
+      );
+
+      newInvoice.total = totalAmount;
+      newInvoice.totalUnits = totalUnits;
+    }
+
+    setInvoice(newInvoice);
+  };
+
+  // Verificar si hay discrepancia entre el total calculado por salario y el total de los items
+  const itemsTotal = invoice.items.reduce((sum, item) => sum + item.total, 0);
+  const hasTotalDiscrepancy =
+    invoice.useSalaryCalculation &&
+    invoice.finalPayment !== undefined &&
+    Math.abs(itemsTotal - invoice.finalPayment) > 0.01;
+
+  const removeItem = (index: number) => {
+    const newItems = [...invoice.items];
+    newItems.splice(index, 1);
+
+    // Si no quedan items, añadir uno vacío
+    if (newItems.length === 0) {
+      newItems.push({
+        client: "",
+        description: "",
+        units: 0,
+        pricePerUnit: 0,
+        total: 0,
+        isHourly: true,
+        manualTotal: false,
+      });
+    }
+
+    // Calcular totales basados en items
+    const totalAmount = newItems.reduce((sum, item) => sum + item.total, 0);
+    const totalUnits = newItems.reduce(
+      (sum, item) => sum + Number(item.units),
+      0
+    );
+
+    // Actualizar estado respetando el modo de cálculo
+    if (invoice.useSalaryCalculation) {
+      setInvoice({
+        ...invoice,
+        items: newItems,
+      });
+    } else {
+      setInvoice({
+        ...invoice,
+        items: newItems,
+        total: totalAmount,
+        totalUnits: totalUnits,
+      });
+    }
   };
 
   return (
@@ -156,6 +323,153 @@ export function InvoiceForm() {
                   />
                 </div>
               </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="useSalaryCalculation"
+                  checked={invoice.useSalaryCalculation}
+                  onCheckedChange={toggleSalaryCalculation}
+                />
+                <Label
+                  htmlFor="useSalaryCalculation"
+                  className="text-sm font-medium text-gray-700"
+                >
+                  Salario a partir del total
+                </Label>
+              </div>
+
+              {hasTotalDiscrepancy && (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded relative">
+                  <strong className="font-bold">Advertencia:</strong>
+                  <span className="block sm:inline">
+                    {" "}
+                    El total calculado por salario (
+                    {invoice.finalPayment?.toFixed(2)} €) no coincide con el
+                    total de los conceptos ({itemsTotal.toFixed(2)} €).
+                  </span>
+                </div>
+              )}
+
+              {invoice.useSalaryCalculation && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="workingDays"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Total de días hábiles
+                      </Label>
+                      <Input
+                        id="workingDays"
+                        type="number"
+                        value={invoice.workingDays}
+                        onChange={(e) =>
+                          calculatePayments(
+                            "workingDays",
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="attendedDays"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Total de días asistidos
+                      </Label>
+                      <Input
+                        id="attendedDays"
+                        type="number"
+                        value={invoice.attendedDays}
+                        onChange={(e) =>
+                          calculatePayments(
+                            "attendedDays",
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="dailyHours"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Total de horas diarias
+                      </Label>
+                      <Input
+                        id="dailyHours"
+                        type="number"
+                        value={invoice.dailyHours}
+                        onChange={(e) =>
+                          calculatePayments(
+                            "dailyHours",
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="monthlyPayment"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Pago mensual
+                      </Label>
+                      <Input
+                        id="monthlyPayment"
+                        type="number"
+                        value={invoice.monthlyPayment}
+                        onChange={(e) =>
+                          calculatePayments(
+                            "monthlyPayment",
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="hourlyPayment"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Pago por hora
+                      </Label>
+                      <Input
+                        id="hourlyPayment"
+                        type="number"
+                        value={invoice.hourlyPayment}
+                        onChange={(e) =>
+                          calculatePayments(
+                            "hourlyPayment",
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="finalPayment"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Resultado (pago final)
+                    </Label>
+                    <Input
+                      id="finalPayment"
+                      type="number"
+                      value={invoice.finalPayment}
+                      readOnly
+                      className="bg-gray-50"
+                    />
+                  </div>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="company" className="space-y-4">
@@ -292,13 +606,29 @@ export function InvoiceForm() {
             <h3 className="text-lg font-semibold">Conceptos</h3>
             {invoice.items.map((item, index) => (
               <Card key={index} className="p-4">
-                <div className="grid grid-cols-6 gap-4">
+                <div className="grid grid-cols-7 gap-4">
+                  <div className="space-y-2 col-span-2">
+                    <Label
+                      htmlFor={`client-${index}`}
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Cliente
+                    </Label>
+                    <Input
+                      id={`client-${index}`}
+                      value={item.client}
+                      onChange={(e) =>
+                        updateItem(index, "client", e.target.value)
+                      }
+                      placeholder="Nombre del cliente"
+                    />
+                  </div>
                   <div className="space-y-2 col-span-2">
                     <Label
                       htmlFor={`description-${index}`}
                       className="text-sm font-medium text-gray-700"
                     >
-                      Descripción
+                      Proyecto
                     </Label>
                     <Input
                       id={`description-${index}`}
@@ -306,7 +636,7 @@ export function InvoiceForm() {
                       onChange={(e) =>
                         updateItem(index, "description", e.target.value)
                       }
-                      placeholder="Descripción del trabajo"
+                      placeholder="Descripción del proyecto"
                     />
                   </div>
                   <div className="space-y-2">
@@ -357,24 +687,7 @@ export function InvoiceForm() {
                       }
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor={`total-${index}`}
-                      className="text-sm font-medium text-gray-700"
-                    >
-                      Total
-                    </Label>
-                    <Input
-                      id={`total-${index}`}
-                      type="number"
-                      value={item.total}
-                      onChange={(e) =>
-                        updateItem(index, "total", Number(e.target.value))
-                      }
-                      disabled={!item.manualTotal}
-                    />
-                  </div>
-                  <div className="space-y-2 flex items-end">
+                  <div className="space-y-2 flex items-end justify-between">
                     <div className="flex items-center space-x-2">
                       <Switch
                         id={`manualTotal-${index}`}
@@ -390,6 +703,17 @@ export function InvoiceForm() {
                         Manual
                       </Label>
                     </div>
+                    {invoice.items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => removeItem(index)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        ×
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>

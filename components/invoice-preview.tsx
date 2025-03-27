@@ -6,6 +6,18 @@ interface InvoicePreviewProps {
 }
 
 export function InvoicePreview({ invoice }: InvoicePreviewProps) {
+  const formatDate = (dateString: string): string => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date
+      .toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+      .replace(/\//g, "-");
+  };
+
   return (
     <div className="space-y-2">
       <CardTitle className="text-2xl font-semibold text-gray-700 mb-4">
@@ -19,7 +31,9 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
               <div className="text-2xl font-light tracking-tight">
                 Factura: {invoice.invoiceNumber}
               </div>
-              <div className="text-lg text-gray-600">Fecha: {invoice.date}</div>
+              <div className="text-lg text-gray-600">
+                Fecha: {formatDate(invoice.date)}
+              </div>
               <div className="mt-6">
                 <div className="text-xl font-medium">
                   {invoice.company.name}
@@ -49,16 +63,16 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
                   <thead>
                     <tr className="bg-gray-50 border-b">
                       <th className="px-6 py-4 text-left text-base font-medium text-gray-900">
-                        Descripción
+                        Cliente
+                      </th>
+                      <th className="px-6 py-4 text-left text-base font-medium text-gray-900">
+                        Proyecto
                       </th>
                       <th className="px-6 py-4 text-right text-base font-medium text-gray-900">
                         Unidades
                       </th>
                       <th className="px-6 py-4 text-right text-base font-medium text-gray-900">
                         Precio/u
-                      </th>
-                      <th className="px-6 py-4 text-right text-base font-medium text-gray-900">
-                        Total
                       </th>
                     </tr>
                   </thead>
@@ -69,30 +83,36 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
                         className="hover:bg-gray-50 transition-colors"
                       >
                         <td className="px-6 py-4 text-base">
-                          {item.description}
+                          {item.client || "-"}
+                        </td>
+                        <td className="px-6 py-4 text-base">
+                          {item.description || "-"}
                         </td>
                         <td className="px-6 py-4 text-base text-right">
-                          {item.units}
-                          {item.isHourly ? "h" : ""}
+                          {item.units > 0
+                            ? `${item.units}${item.isHourly ? "h" : ""}`
+                            : "-"}
                         </td>
                         <td className="px-6 py-4 text-base text-right">
-                          {item.pricePerUnit != 0
+                          {item.pricePerUnit > 0
                             ? `${item.pricePerUnit.toFixed(2)}€`
-                            : ""}
-                        </td>
-                        <td className="px-6 py-4 text-base text-right">
-                          {item.total.toFixed(2)} €
+                            : "-"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 border-t">
-                      <td
-                        colSpan={3}
-                        className="px-6 py-4 text-base font-medium text-right"
-                      >
+                      <td className="px-6 py-4 text-base font-medium text-left">
                         TOTAL
+                      </td>
+                      <td></td>
+                      <td className="px-6 py-4 text-base font-medium text-right">
+                        {invoice.totalUnits && invoice.totalUnits > 0
+                          ? `${invoice.totalUnits}${
+                              invoice.items[0]?.isHourly ? "h" : ""
+                            }`
+                          : "-"}
                       </td>
                       <td className="px-6 py-4 text-base font-medium text-right">
                         {invoice.total.toFixed(2)} €
