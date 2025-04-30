@@ -189,7 +189,7 @@ export function PDFButton({ invoice }: PDFButtonProps) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.text(
-      `Total a pagar: ${invoice.total.toFixed(2)} €`,
+      `Total a pagar: ${invoice.total.toFixed(0)} €`,
       pageWidth - margin,
       270,
       {
