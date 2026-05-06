@@ -187,11 +187,12 @@ export function PDFButton({ invoice }: PDFButtonProps) {
 
     const buildFileName = () => {
       const parts = (invoice.worker.name || "").trim().split(/\s+/).filter(Boolean)
-      const firstName = parts[0] ?? ""
-      const firstSurname = parts[1] ?? ""
+      const firstName = (parts[0] ?? "").toUpperCase()
+      const firstSurname = (parts[1] ?? "").toUpperCase()
       const date = invoice.date ? new Date(invoice.date) : new Date()
-      const monthName = date.toLocaleDateString("es-ES", { month: "long" })
-      const month = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+      const month = date
+        .toLocaleDateString("es-ES", { month: "long" })
+        .toUpperCase()
       const year = date.getFullYear()
       const segments = ["FACTURA", firstName, firstSurname, month, year]
         .filter(Boolean)
