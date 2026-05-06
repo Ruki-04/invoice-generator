@@ -186,13 +186,38 @@ export function PDFButton({ invoice }: PDFButtonProps) {
     })
 
     const buildFileName = () => {
-      const parts = (invoice.worker.name || "").trim().split(/\s+/).filter(Boolean)
-      const firstName = (parts[0] ?? "").toUpperCase()
-      const firstSurname = (parts[1] ?? "").toUpperCase()
+      const COMPOUND_NAME_INDICATORS = new Set([
+        "MARIA", "JOSE", "JUAN", "LUIS", "MIGUEL", "ANGEL",
+        "FRANCISCO", "JAVIER", "ANTONIO", "MANUEL", "ANA",
+        "TERESA", "CARMEN", "ISABEL", "PILAR", "JESUS", "PEDRO",
+        "FELIPE", "PABLO", "RAFAEL", "CARLOS", "DAVID", "RAMON",
+        "FERNANDO", "BELEN",
+        "DEL", "DE", "LA", "LOS", "LAS",
+      ])
+
+      const stripAccents = (s: string) =>
+        s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+
+      const parts = (invoice.worker.name || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => stripAccents(w).toUpperCase())
+
+      const firstName = parts[0] ?? ""
+      let surnameIndex = 1
+      while (
+        surnameIndex < parts.length - 1 &&
+        COMPOUND_NAME_INDICATORS.has(parts[surnameIndex])
+      ) {
+        surnameIndex++
+      }
+      const firstSurname = parts[surnameIndex] ?? ""
+
       const date = invoice.date ? new Date(invoice.date) : new Date()
-      const month = date
-        .toLocaleDateString("es-ES", { month: "long" })
-        .toUpperCase()
+      const month = stripAccents(
+        date.toLocaleDateString("es-ES", { month: "long" })
+      ).toUpperCase()
       const year = date.getFullYear()
       const segments = ["FACTURA", firstName, firstSurname, month, year]
         .filter(Boolean)
