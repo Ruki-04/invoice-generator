@@ -85,6 +85,7 @@ export function InvoiceForm() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as InvoicePreset[];
       if (!Array.isArray(parsed) || parsed.length === 0) return;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hidratación inicial desde localStorage (no disponible en SSR)
       setPresets(parsed);
       const lastId = window.localStorage.getItem(LAST_PRESET_KEY) ?? "";
       const active = parsed.find((p) => p.id === lastId) ?? parsed[0];
