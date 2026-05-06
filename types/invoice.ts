@@ -33,3 +33,24 @@ export interface InvoiceDetails {
   finalPayment?: number;
   useSalaryCalculation?: boolean;
 }
+
+export interface InvoiceDefaults {
+  company: {
+    name: string;
+    taxId: string;
+    address: string;
+  };
+  worker: {
+    name: string;
+    id: string;
+    address: string;
+  };
+  paymentMethod: string;
+  bankAccount: string;
+  additionalNote: string;
+}
+
+export interface InvoicePreset extends InvoiceDefaults {
+  id: string;
+  name: string;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,14 +16,15 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { InvoiceDetails } from "../types/invoice";
+import type { InvoiceDefaults, InvoiceDetails, InvoicePreset } from "../types/invoice";
+import { ensureLastDayOfMonth, lastDayOfMonth } from "@/lib/dates";
 import { InvoicePreview } from "./invoice-preview";
 import { PDFButton } from "./pdf-button";
 
 export function InvoiceForm() {
   const [invoice, setInvoice] = useState<InvoiceDetails>({
     invoiceNumber: "",
-    date: new Date().toISOString().split("T")[0],
+    date: lastDayOfMonth(),
     company: {
       name: "",
       taxId: "",
@@ -58,6 +59,140 @@ export function InvoiceForm() {
     finalPayment: 0,
     useSalaryCalculation: false,
   });
+  const [presets, setPresets] = useState<InvoicePreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [presetName, setPresetName] = useState("");
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  const PRESETS_STORAGE_KEY = "invoice-defaults-presets";
+  const LAST_PRESET_KEY = "invoice-defaults-last-preset";
+
+  const applyPreset = (preset: InvoiceDefaults) => {
+    setInvoice((prev) => ({
+      ...prev,
+      company: preset.company,
+      worker: preset.worker,
+      paymentMethod: preset.paymentMethod || "Transferencia",
+      bankAccount: preset.bankAccount,
+      additionalNote: preset.additionalNote,
+    }));
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(PRESETS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as InvoicePreset[];
+      if (!Array.isArray(parsed) || parsed.length === 0) return;
+      setPresets(parsed);
+      const lastId = window.localStorage.getItem(LAST_PRESET_KEY) ?? "";
+      const active = parsed.find((p) => p.id === lastId) ?? parsed[0];
+      setSelectedPresetId(active.id);
+      setPresetName(active.name);
+      applyPreset(active);
+    } catch {
+      /* localStorage corrupto, ignorar */
+    }
+  }, []);
+
+  const handleDateChange = (value: string) => {
+    setInvoice({ ...invoice, date: ensureLastDayOfMonth(value) });
+  };
+
+  const flashMessage = (message: string) => {
+    setSavedMessage(message);
+    setTimeout(() => setSavedMessage(null), 3000);
+  };
+
+  const persistPresets = (next: InvoicePreset[]) => {
+    setPresets(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(next));
+    }
+  };
+
+  const handleSelectPreset = (id: string) => {
+    setSelectedPresetId(id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LAST_PRESET_KEY, id);
+    }
+    const preset = presets.find((p) => p.id === id);
+    if (preset) {
+      setPresetName(preset.name);
+      applyPreset(preset);
+    }
+  };
+
+  const savePreset = () => {
+    const trimmed = presetName.trim();
+    if (!trimmed) {
+      flashMessage("Pon un nombre al preset");
+      return;
+    }
+    const data: InvoiceDefaults = {
+      company: invoice.company,
+      worker: invoice.worker,
+      paymentMethod: invoice.paymentMethod,
+      bankAccount: invoice.bankAccount,
+      additionalNote: invoice.additionalNote,
+    };
+    const existing = presets.find(
+      (p) =>
+        p.id === selectedPresetId ||
+        p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    let next: InvoicePreset[];
+    let activeId: string;
+    if (existing) {
+      activeId = existing.id;
+      next = presets.map((p) =>
+        p.id === existing.id ? { ...p, ...data, name: trimmed } : p
+      );
+    } else {
+      activeId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `preset-${Date.now()}`;
+      next = [...presets, { id: activeId, name: trimmed, ...data }];
+    }
+    persistPresets(next);
+    setSelectedPresetId(activeId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LAST_PRESET_KEY, activeId);
+    }
+    flashMessage(existing ? "Preset actualizado" : "Preset guardado");
+  };
+
+  const deletePreset = () => {
+    if (!selectedPresetId) return;
+    const next = presets.filter((p) => p.id !== selectedPresetId);
+    persistPresets(next);
+    const fallback = next[0];
+    if (fallback) {
+      setSelectedPresetId(fallback.id);
+      setPresetName(fallback.name);
+      applyPreset(fallback);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LAST_PRESET_KEY, fallback.id);
+      }
+    } else {
+      setSelectedPresetId("");
+      setPresetName("");
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(LAST_PRESET_KEY);
+      }
+    }
+    flashMessage("Preset eliminado");
+  };
+
+  const newPreset = () => {
+    setSelectedPresetId("");
+    setPresetName("");
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(LAST_PRESET_KEY);
+    }
+  };
 
   const updateItem = (
     index: number,
@@ -81,8 +216,12 @@ export function InvoiceForm() {
       0
     );
 
-    // Solo actualizar el total y totalUnits si no estamos usando el cálculo de salario
-    if (!invoice.useSalaryCalculation) {
+    const useGlobalHourly =
+      !invoice.useSalaryCalculation &&
+      (invoice.totalUnits ?? 0) > 0 &&
+      (invoice.hourlyPayment ?? 0) > 0;
+
+    if (!invoice.useSalaryCalculation && !useGlobalHourly) {
       setInvoice({
         ...invoice,
         items: newItems,
@@ -90,12 +229,32 @@ export function InvoiceForm() {
         totalUnits: totalUnits,
       });
     } else {
-      // Si estamos usando cálculo de salario, solo actualizamos los items
+      // En modo salario o con globales activas, solo actualizamos items
       setInvoice({
         ...invoice,
         items: newItems,
       });
     }
+  };
+
+  const setHourlyGlobals = (
+    field: "totalUnits" | "hourlyPayment",
+    value: number
+  ) => {
+    const newInvoice = { ...invoice, [field]: value };
+    const units = field === "totalUnits" ? value : invoice.totalUnits ?? 0;
+    const rate =
+      field === "hourlyPayment" ? value : invoice.hourlyPayment ?? 0;
+    if (units > 0 && rate > 0) {
+      newInvoice.total = units * rate;
+    } else {
+      // Si falta uno de los dos, recalcular total a partir de los items
+      newInvoice.total = invoice.items.reduce(
+        (sum, item) => sum + item.total,
+        0
+      );
+    }
+    setInvoice(newInvoice);
   };
 
   const addItem = () => {
@@ -317,10 +476,11 @@ export function InvoiceForm() {
                     id="date"
                     type="date"
                     value={invoice.date}
-                    onChange={(e) =>
-                      setInvoice({ ...invoice, date: e.target.value })
-                    }
+                    onChange={(e) => handleDateChange(e.target.value)}
                   />
+                  <p className="text-xs text-gray-500">
+                    Se ajusta automáticamente al último día del mes seleccionado.
+                  </p>
                 </div>
               </div>
 
@@ -337,6 +497,51 @@ export function InvoiceForm() {
                   Salario a partir del total
                 </Label>
               </div>
+
+              {!invoice.useSalaryCalculation && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="globalHours"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Horas trabajadas (global)
+                    </Label>
+                    <Input
+                      id="globalHours"
+                      type="number"
+                      value={invoice.totalUnits ?? 0}
+                      onChange={(e) =>
+                        setHourlyGlobals("totalUnits", Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="globalHourlyRate"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Precio por hora (global)
+                    </Label>
+                    <Input
+                      id="globalHourlyRate"
+                      type="number"
+                      value={invoice.hourlyPayment ?? 0}
+                      onChange={(e) =>
+                        setHourlyGlobals(
+                          "hourlyPayment",
+                          Number(e.target.value)
+                        )
+                      }
+                    />
+                  </div>
+                  <p className="col-span-2 text-xs text-gray-500">
+                    Si rellenas ambos, el total de la factura se calcula como
+                    horas × precio. Si los dejas en 0, el total se suma desde
+                    los conceptos.
+                  </p>
+                </div>
+              )}
 
               {hasTotalDiscrepancy && (
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded relative">
@@ -786,6 +991,75 @@ export function InvoiceForm() {
                 placeholder="Información adicional para la factura"
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white">
+        <CardContent className="p-4 space-y-3">
+          <h3 className="text-lg font-semibold">Datos predeterminados</h3>
+          <p className="text-sm text-gray-600">
+            Guarda varios juegos de datos (empresa, trabajador, pago) y cárgalos
+            al instante. Se almacenan en este navegador.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="presetSelect" className="text-sm font-medium">
+                Cargar preset
+              </Label>
+              <Select
+                value={selectedPresetId || "__none__"}
+                onValueChange={(value) =>
+                  value === "__none__" ? newPreset() : handleSelectPreset(value)
+                }
+              >
+                <SelectTrigger id="presetSelect">
+                  <SelectValue placeholder="Selecciona un preset" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Nuevo / ninguno —</SelectItem>
+                  {presets.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="presetName" className="text-sm font-medium">
+                Nombre del preset
+              </Label>
+              <Input
+                id="presetName"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="Ej: Cliente A, Empresa X..."
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={savePreset}>
+              {selectedPresetId ? "Actualizar preset" : "Guardar preset"}
+            </Button>
+            {selectedPresetId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={deletePreset}
+                className="text-red-600 hover:text-red-700"
+              >
+                Borrar preset
+              </Button>
+            )}
+            <Button type="button" variant="ghost" onClick={newPreset}>
+              Nuevo
+            </Button>
+            {savedMessage && (
+              <span className="text-sm text-gray-600 self-center">
+                {savedMessage}
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

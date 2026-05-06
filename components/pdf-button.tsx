@@ -24,14 +24,16 @@ export function PDFButton({ invoice }: PDFButtonProps) {
 
   const generatePDF = () => {
     const doc = new jsPDF()
-    // Configuración global de fuentes
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(10) // Tamaño de letra más pequeño por defecto
+    doc.setFontSize(10)
 
-    // Márgenes y dimensiones
     const margin = 20
     const pageWidth = doc.internal.pageSize.width
     const contentWidth = pageWidth - margin * 2
+
+    const showPricePerUnit = !invoice.useSalaryCalculation
+    const columnCount = showPricePerUnit ? 5 : 4
+    const colWidth = contentWidth / columnCount
 
     // Header section
     doc.setFontSize(12)
@@ -55,7 +57,6 @@ export function PDFButton({ invoice }: PDFButtonProps) {
       align: "right",
     })
 
-    // Handle multiline company address
     const companyAddressLines = doc.splitTextToSize(invoice.company.address, 80)
     companyAddressLines.forEach((line: string, index: number) => {
       doc.text(line, pageWidth - margin, margin + 34 + index * 5, {
@@ -72,7 +73,6 @@ export function PDFButton({ invoice }: PDFButtonProps) {
     doc.setFont("helvetica", "normal")
     doc.text(invoice.worker.id, margin, workerY + 7)
 
-    // Handle multiline worker address
     const workerAddressLines = doc.splitTextToSize(invoice.worker.address, 80)
     workerAddressLines.forEach((line: string, index: number) => {
       doc.text(line, margin, workerY + 14 + index * 5)
@@ -80,51 +80,51 @@ export function PDFButton({ invoice }: PDFButtonProps) {
 
     // Table headers
     const tableY = workerY + 40
-    const colWidth = contentWidth / 5 // 5 columnas de igual ancho
 
-    // Encabezado de tabla
     doc.setFillColor(247, 248, 249)
     doc.rect(margin, tableY - 5, contentWidth, 10, "F")
     doc.setFont("helvetica", "bold")
     doc.setFontSize(10)
 
-    // Posiciones de las columnas
-    const col1 = margin
-    const col2 = margin + colWidth
-    const col3 = margin + colWidth * 2
-    const col4 = margin + colWidth * 3
-    const col5 = margin + colWidth * 4
+    const colClient = margin
+    const colProject = margin + colWidth
+    const colUnits = margin + colWidth * 2
+    const colPrice = showPricePerUnit ? margin + colWidth * 3 : null
+    const colTotal = margin + colWidth * (columnCount - 1)
 
-    doc.text("Cliente", col1 + 2, tableY)
-    doc.text("Proyecto", col2 + 2, tableY)
-    doc.text("Unidades", col3 + colWidth - 5, tableY, { align: "right" })
-    doc.text("Precio/h", col4 + colWidth - 5, tableY, { align: "right" })
-    doc.text("Total", col5 + colWidth - 5, tableY, { align: "right" })
+    doc.text("Cliente", colClient + 2, tableY)
+    doc.text("Proyecto", colProject + 2, tableY)
+    doc.text("Unidades", colUnits + colWidth - 5, tableY, { align: "right" })
+    if (colPrice !== null) {
+      doc.text("Precio/h", colPrice + colWidth - 5, tableY, { align: "right" })
+    }
+    doc.text("Total", colTotal + colWidth - 5, tableY, { align: "right" })
 
     // Table content
     doc.setFont("helvetica", "normal")
     let y = tableY + 10
     invoice.items.forEach((item, index) => {
       const units = item.units > 0 ? (item.isHourly ? `${item.units}h` : item.units.toString()) : "-"
-
-      // Mostrar precio por hora solo si existe
       const pricePerHour = item.pricePerUnit > 0 ? `${item.pricePerUnit.toFixed(2)}€` : "-"
-
-      // Calcular total solo si ambos valores existen
       const itemTotal =
-        item.units > 0 && item.pricePerUnit > 0 ? `${(item.units * item.pricePerUnit).toFixed(2)}€` : "-"
+        item.total > 0
+          ? `${item.total.toFixed(2)}€`
+          : item.units > 0 && item.pricePerUnit > 0
+            ? `${(item.units * item.pricePerUnit).toFixed(2)}€`
+            : "-"
 
-      // Add zebra striping
       if (index % 2 === 0) {
         doc.setFillColor(252, 252, 253)
         doc.rect(margin, y - 5, contentWidth, 10, "F")
       }
 
-      doc.text(item.client || "-", col1 + 2, y)
-      doc.text(item.description || "-", col2 + 2, y)
-      doc.text(units, col3 + colWidth - 5, y, { align: "right" })
-      doc.text(pricePerHour, col4 + colWidth - 5, y, { align: "right" })
-      doc.text(itemTotal, col5 + colWidth - 5, y, { align: "right" })
+      doc.text(item.client || "-", colClient + 2, y)
+      doc.text(item.description || "-", colProject + 2, y)
+      doc.text(units, colUnits + colWidth - 5, y, { align: "right" })
+      if (colPrice !== null) {
+        doc.text(pricePerHour, colPrice + colWidth - 5, y, { align: "right" })
+      }
+      doc.text(itemTotal, colTotal + colWidth - 5, y, { align: "right" })
 
       y += 10
     })
@@ -133,22 +133,24 @@ export function PDFButton({ invoice }: PDFButtonProps) {
     doc.setFillColor(247, 248, 249)
     doc.rect(margin, y - 5, contentWidth, 10, "F")
     doc.setFont("helvetica", "bold")
-    doc.text("TOTAL:", col1 + 2, y)
+    doc.text("TOTAL:", colClient + 2, y)
     doc.text(
       invoice.totalUnits && invoice.totalUnits > 0
         ? `${invoice.totalUnits}${invoice.items[0]?.isHourly ? "h" : ""}`
         : "-",
-      col3 + colWidth - 5,
+      colUnits + colWidth - 5,
       y,
       { align: "right" },
     )
-    doc.text(
-      invoice.hourlyPayment && invoice.hourlyPayment > 0 ? `${invoice.hourlyPayment.toFixed(2)}€` : "-",
-      col4 + colWidth - 5,
-      y,
-      { align: "right" },
-    )
-    doc.text(`${invoice.total.toFixed(2)}€`, col5 + colWidth - 5, y, {
+    if (colPrice !== null) {
+      doc.text(
+        invoice.hourlyPayment && invoice.hourlyPayment > 0 ? `${invoice.hourlyPayment.toFixed(2)}€` : "-",
+        colPrice + colWidth - 5,
+        y,
+        { align: "right" },
+      )
+    }
+    doc.text(`${invoice.total.toFixed(2)}€`, colTotal + colWidth - 5, y, {
       align: "right",
     })
 
@@ -168,7 +170,6 @@ export function PDFButton({ invoice }: PDFButtonProps) {
       y += 7
     }
 
-    // Additional note if present
     if (invoice.additionalNote) {
       y += 10
       doc.setFont("helvetica", "normal")
@@ -178,14 +179,27 @@ export function PDFButton({ invoice }: PDFButtonProps) {
       })
     }
 
-    // Total at bottom
     doc.setFont("helvetica", "bold")
     doc.setFontSize(12)
     doc.text(`Total a pagar: ${invoice.total.toFixed(2)} €`, pageWidth - margin, 270, {
       align: "right",
     })
 
-    doc.save(`factura-${invoice.invoiceNumber}.pdf`)
+    const buildFileName = () => {
+      const parts = (invoice.worker.name || "").trim().split(/\s+/).filter(Boolean)
+      const firstName = parts[0] ?? ""
+      const firstSurname = parts[1] ?? ""
+      const date = invoice.date ? new Date(invoice.date) : new Date()
+      const monthName = date.toLocaleDateString("es-ES", { month: "long" })
+      const month = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+      const year = date.getFullYear()
+      const segments = ["FACTURA", firstName, firstSurname, month, year]
+        .filter(Boolean)
+        .join(" ")
+      return `${segments}.pdf`
+    }
+
+    doc.save(buildFileName())
   }
 
   return (

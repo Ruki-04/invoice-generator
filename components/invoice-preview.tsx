@@ -18,6 +18,8 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
       .replace(/\//g, "-")
   }
 
+  const showPricePerUnit = !invoice.useSalaryCalculation
+
   return (
     <div className="space-y-2">
       <CardTitle className="text-2xl font-semibold text-gray-700 mb-4">Previsualización</CardTitle>
@@ -51,20 +53,22 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
                       <th className="px-6 py-4 text-left text-base font-medium text-gray-900">Cliente</th>
                       <th className="px-6 py-4 text-left text-base font-medium text-gray-900">Proyecto</th>
                       <th className="px-6 py-4 text-right text-base font-medium text-gray-900">Unidades</th>
-                      <th className="px-6 py-4 text-right text-base font-medium text-gray-900">Precio/h</th>
+                      {showPricePerUnit && (
+                        <th className="px-6 py-4 text-right text-base font-medium text-gray-900">Precio/h</th>
+                      )}
                       <th className="px-6 py-4 text-right text-base font-medium text-gray-900">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {invoice.items.map((item, index) => {
-                      // Mostrar precio por hora solo si existe
                       const pricePerHour = item.pricePerUnit > 0 ? `${item.pricePerUnit.toFixed(2)}€` : "-"
 
-                      // Calcular total solo si ambos valores existen
                       const itemTotal =
-                        item.units > 0 && item.pricePerUnit > 0
-                          ? `${(item.units * item.pricePerUnit).toFixed(2)}€`
-                          : "-"
+                        item.total > 0
+                          ? `${item.total.toFixed(2)}€`
+                          : item.units > 0 && item.pricePerUnit > 0
+                            ? `${(item.units * item.pricePerUnit).toFixed(2)}€`
+                            : "-"
 
                       return (
                         <tr key={index} className="hover:bg-gray-50 transition-colors">
@@ -73,7 +77,9 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
                           <td className="px-6 py-4 text-base text-right">
                             {item.units > 0 ? `${item.units}${item.isHourly ? "h" : ""}` : "-"}
                           </td>
-                          <td className="px-6 py-4 text-base text-right">{pricePerHour}</td>
+                          {showPricePerUnit && (
+                            <td className="px-6 py-4 text-base text-right">{pricePerHour}</td>
+                          )}
                           <td className="px-6 py-4 text-base text-right">{itemTotal}</td>
                         </tr>
                       )
@@ -88,7 +94,13 @@ export function InvoicePreview({ invoice }: InvoicePreviewProps) {
                           ? `${invoice.totalUnits}${invoice.items[0]?.isHourly ? "h" : ""}`
                           : "-"}
                       </td>
-                      <td className="px-6 py-4 text-base font-medium text-right">{invoice.hourlyPayment} €</td>
+                      {showPricePerUnit && (
+                        <td className="px-6 py-4 text-base font-medium text-right">
+                          {invoice.hourlyPayment && invoice.hourlyPayment > 0
+                            ? `${invoice.hourlyPayment.toFixed(2)} €`
+                            : "-"}
+                        </td>
+                      )}
                       <td className="px-6 py-4 text-base font-medium text-right">{invoice.total.toFixed(2)} €</td>
                     </tr>
                   </tfoot>
